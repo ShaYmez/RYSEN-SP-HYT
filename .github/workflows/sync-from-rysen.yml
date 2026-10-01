@@ -6,7 +6,7 @@ on:
       rysen_ref:
         description: RYSEN git ref (branch, tag, or SHA)
         required: false
-        default: feature/HYTERA
+        default: master
   repository_dispatch:
     types: [rysen-hyt-updated]
 
@@ -31,7 +31,7 @@ jobs:
             REF="${{ vars.RYSEN_SYNC_REF }}"
           fi
           if [ -z "$REF" ]; then
-            REF="feature/HYTERA"
+            REF="master"
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "Syncing from RYSEN ref: $REF"

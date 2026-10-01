@@ -4,7 +4,7 @@ Docker image for the [RYSEN](https://github.com/ShaYmez/RYSEN) stack. One public
 
 **Image:** `shaymez/rysen-sp-hyt:latest`
 
-The proxy sources live in RYSEN. This repo copies them. Until the Hytera branch merges, sync from `feature/HYTERA`. After that merge, change the sync workflow ref to `master`.
+The proxy sources live in RYSEN. This repo copies them. Sync from RYSEN `master`.
 
 ## Docker
 
