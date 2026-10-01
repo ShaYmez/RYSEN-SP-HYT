@@ -17,7 +17,7 @@ hytera-proxy:
     volumes:
         - '/etc/rysen/hytera-proxy.cfg:/opt/rysen-sp-hyt/hytera-proxy.cfg'
     ports:
-        - '50000-50029:50000-50029/udp'
+        - '50000-50032:50000-50032/udp'
     restart: unless-stopped
     depends_on:
         - rysen
