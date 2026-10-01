@@ -1,0 +1,70 @@
+name: Sync from RYSEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      rysen_ref:
+        description: RYSEN git ref (branch, tag, or SHA)
+        required: false
+        default: feature/HYTERA
+  repository_dispatch:
+    types: [rysen-hyt-updated]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SP-HYT
+        uses: actions/checkout@v4
+
+      - name: Resolve RYSEN ref
+        id: ref
+        run: |
+          REF="${{ github.event.client_payload.ref }}"
+          if [ -z "$REF" ]; then
+            REF="${{ github.event.inputs.rysen_ref }}"
+          fi
+          if [ -z "$REF" ]; then
+            REF="${{ vars.RYSEN_SYNC_REF }}"
+          fi
+          if [ -z "$REF" ]; then
+            REF="feature/HYTERA"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Syncing from RYSEN ref: $REF"
+
+      - name: Checkout RYSEN source
+        uses: actions/checkout@v4
+        with:
+          repository: ShaYmez/RYSEN
+          ref: ${{ steps.ref.outputs.ref }}
+          path: rysen-src
+          sparse-checkout: |
+            hytera_proxy.py
+            hytera_const.py
+            hytera-proxy-SAMPLE.cfg
+            tests/test_hytera_proxy.py
+          sparse-checkout-cone-mode: false
+
+      - name: Copy synced files
+        run: |
+          mkdir -p sync tests
+          cp rysen-src/hytera_proxy.py rysen-src/hytera_const.py rysen-src/hytera-proxy-SAMPLE.cfg sync/
+          cp rysen-src/tests/test_hytera_proxy.py tests/
+          git -C rysen-src rev-parse HEAD > sync/.rysen-sha
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sync/hytera_proxy.py sync/hytera_const.py sync/hytera-proxy-SAMPLE.cfg sync/.rysen-sha tests/test_hytera_proxy.py
+          if git diff --staged --quiet; then
+            echo "No changes to sync"
+            exit 0
+          fi
+          SHA=$(cat sync/.rysen-sha)
+          git commit -m "sync: update from RYSEN @ ${SHA:0:7}"
+          git push

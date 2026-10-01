@@ -1,0 +1,9 @@
+#!/bin/sh
+###############################################################################
+# RYSEN Hytera UDP proxy entrypoint
+# Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
+###############################################################################
+
+cd /opt/rysen-sp-hyt
+
+exec python /opt/rysen-sp-hyt/hytera_proxy.py -c /opt/rysen-sp-hyt/hytera-proxy.cfg
