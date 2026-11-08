@@ -32,6 +32,14 @@ P2P_COMMAND_TYPE_OFFSET = 20
 P2P_REDIRECT_ID = 0x0B
 P2P_REDIRECT_SUFFIX = b'\xff\x01'
 
+# HR106x repeaters carry the same 72-byte media body on the P2P socket.
+# Most packets have a four-byte HMTP prefix. A routed variant observed on an
+# HR1065 adds "P2P1", the destination IPv4 address and a big-endian port.
+HMTP_PREFIX = b'HMTP'
+HMTP_ROUTED_PREFIX = b'HMTPP2P1'
+HMTP_HEADER_LEN = 4
+HMTP_ROUTED_HEADER_LEN = 14
+
 # DMR media packet layout observed on RD6xx/RD9xx IP Multi-site links.
 MEDIA_MIN_LEN = 72
 MEDIA_SOURCE_PORT_OFFSET = 0
@@ -65,6 +73,12 @@ SLOT_VOICE_E = 0xBBBB
 SLOT_VOICE_F = 0xCCCC
 SLOT_WAKEUP = 0xDDDD
 SLOT_HYTERA_SYNC = 0xEEEE
+# Private SMS captured on GB7NR: 3333 preamble, 4444 header, 5555 1/2-rate
+# data. PD685G H-SMS uses 6666 for 3/4-rate data blocks.
+SLOT_DATA_CSBK = 0x3333
+SLOT_DATA_HEADER = 0x4444
+SLOT_DATA_BLOCK = 0x5555
+SLOT_DATA_BLOCK_34 = 0x6666
 
 # DMRD voice subtype values represented by each Hytera slot marker.
 VOICE_SLOT_DTYPE = {
@@ -76,9 +90,27 @@ VOICE_SLOT_DTYPE = {
     SLOT_VOICE_F: 5,
 }
 
+# Homebrew DATA_SYNC dtypes used by the existing UNIT DATA / SMS path.
+# Captured MD380/RD985 5555 bursts carry ETSI 1/2-rate slot type 7, not 3/4.
+DATA_SLOT_DTYPE = {
+    SLOT_DATA_CSBK: 3,
+    SLOT_DATA_HEADER: 6,
+    SLOT_DATA_BLOCK: 7,
+    SLOT_DATA_BLOCK_34: 8,
+}
+DATA_DTYPE_SLOT = {
+    3: SLOT_DATA_CSBK,
+    6: SLOT_DATA_HEADER,
+    7: SLOT_DATA_BLOCK,
+    8: SLOT_DATA_BLOCK_34,
+}
+
 # Proxy control datagrams. They are private RYSEN control messages, not Hytera.
 PRIN = b'PRIN'
 PRCL = b'PRCL'
+
+# Host /var/log/rysen is mounted at /opt/rysen/log in the SystemX image.
+DEFAULT_UNKNOWN_CAPTURE_FILE = '/opt/rysen/log/hytera-unknown.jsonl'
 
 # The first capture-validated RDAC identity response is emitted after the
 # OK-DMR step-1 request. It exposes the repeater's 24-bit DMR ID at 18:21.
@@ -120,6 +152,26 @@ def is_p2p_ack(data):
     return len(data) >= 9 and data[4:9] == P2P_ACK_MARKER
 
 
+def unwrap_hmtp_media(data):
+    """Return the 72-byte HR106x media body, or None for another packet."""
+    if data.startswith(HMTP_ROUTED_PREFIX):
+        if len(data) != HMTP_ROUTED_HEADER_LEN + MEDIA_MIN_LEN:
+            return None
+        return data[HMTP_ROUTED_HEADER_LEN:]
+    if data.startswith(HMTP_PREFIX):
+        if len(data) != HMTP_HEADER_LEN + MEDIA_MIN_LEN:
+            return None
+        return data[HMTP_HEADER_LEN:]
+    return None
+
+
+def wrap_hmtp_media(data):
+    """Wrap one standard Hytera media body for direct HR106x delivery."""
+    if len(data) != MEDIA_MIN_LEN:
+        return None
+    return HMTP_PREFIX + data
+
+
 def media_timeslot(data):
     """Return DMR timeslot 1/2 for a complete media packet."""
     if len(data) < MEDIA_MIN_LEN:
@@ -143,12 +195,34 @@ def media_radio_ids(data):
     return source, destination
 
 
+_ROUTINE_VOICE_SLOTS = frozenset({
+    SLOT_VOICE_LC_HEADER,
+    SLOT_VOICE_LC_TERMINATOR,
+    SLOT_VOICE_A,
+    SLOT_VOICE_B,
+    SLOT_VOICE_C,
+    SLOT_VOICE_D,
+    SLOT_VOICE_E,
+    SLOT_VOICE_F,
+    SLOT_WAKEUP,
+    SLOT_HYTERA_SYNC,
+})
+
+
 def media_slot_type(data):
     """Return the 16-bit Hytera slot/burst type."""
     if len(data) < MEDIA_MIN_LEN:
         return None
     return int.from_bytes(
         data[MEDIA_SLOT_TYPE_OFFSET:MEDIA_SLOT_TYPE_OFFSET + 2], 'big')
+
+
+def hytera_trace_interesting_media(data):
+    """Hex-dump SMS/data and unknown slots; skip routine voice bursts."""
+    slot = media_slot_type(data)
+    if slot is None:
+        return True
+    return slot not in _ROUTINE_VOICE_SLOTS
 
 
 def media_call_type(data):
